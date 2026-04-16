@@ -4,6 +4,8 @@ const Message = require('../models/Message');
 const PhoneNumber = require('../models/PhoneNumber');
 const whatsappService = require('../services/whatsappService');
 
+const SAFE_PHONE_NUMBER_FIELDS = '-accessToken -verifyToken';
+
 const buildConversationQuery = async ({ status, search }) => {
   const query = {};
   if (status && status !== 'all') {
@@ -29,7 +31,7 @@ exports.getConversations = async (req, res) => {
       Conversation.find(query)
         .populate('customer')
         .populate('assignedAgent', 'name email status avatar')
-        .populate('phoneNumber')
+        .populate('phoneNumber', SAFE_PHONE_NUMBER_FIELDS)
         .sort({ 'lastMessage.timestamp': -1, updatedAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -48,7 +50,7 @@ exports.getConversation = async (req, res) => {
       .populate('customer')
       .populate('assignedAgent', 'name email role status avatar')
       .populate('tags')
-      .populate('phoneNumber');
+      .populate('phoneNumber', SAFE_PHONE_NUMBER_FIELDS);
 
     if (!conversation) {
       return res.status(404).json({ success: false, message: 'Conversation not found' });
@@ -69,7 +71,7 @@ exports.assignConversation = async (req, res) => {
     )
       .populate('customer')
       .populate('assignedAgent', 'name email role status avatar')
-      .populate('phoneNumber');
+      .populate('phoneNumber', SAFE_PHONE_NUMBER_FIELDS);
 
     if (!conversation) {
       return res.status(404).json({ success: false, message: 'Conversation not found' });
@@ -87,7 +89,7 @@ exports.updateConversationStatus = async (req, res) => {
     const conversation = await Conversation.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true })
       .populate('customer')
       .populate('assignedAgent', 'name email role status avatar')
-      .populate('phoneNumber');
+      .populate('phoneNumber', SAFE_PHONE_NUMBER_FIELDS);
 
     if (!conversation) {
       return res.status(404).json({ success: false, message: 'Conversation not found' });
@@ -134,6 +136,12 @@ exports.sendMessage = async (req, res) => {
     const conversation = await Conversation.findById(req.params.id).populate('customer').populate('phoneNumber');
     if (!conversation) {
       return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+    if (
+      req.user.role !== 'admin' &&
+      String(conversation.phoneNumber.connectedBy) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ success: false, message: 'Not authorized to use this phone number' });
     }
 
     let waResult = null;
@@ -226,7 +234,7 @@ exports.searchConversations = async (req, res) => {
     })
       .populate('customer')
       .populate('assignedAgent', 'name email status avatar')
-      .populate('phoneNumber')
+      .populate('phoneNumber', SAFE_PHONE_NUMBER_FIELDS)
       .sort({ 'lastMessage.timestamp': -1 });
 
     return res.json({ success: true, conversations });

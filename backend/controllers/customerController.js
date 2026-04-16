@@ -29,7 +29,7 @@ exports.getCustomer = async (req, res) => {
 
     const conversations = await Conversation.find({ customer: customer._id })
       .populate('assignedAgent', 'name email status avatar')
-      .populate('phoneNumber')
+      .populate('phoneNumber', '-accessToken -verifyToken')
       .sort({ updatedAt: -1 });
 
     return res.json({ success: true, customer, conversationCount: conversations.length, conversations });

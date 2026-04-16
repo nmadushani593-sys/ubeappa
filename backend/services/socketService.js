@@ -13,13 +13,21 @@ module.exports = function setupSocket(io) {
   io.on('connection', (socket) => {
     console.log('Socket connected:', socket.id);
 
-    socket.on('agent:join', async (userId) => {
+    const registerAgent = async () => {
+      if (!socket.user?._id) {
+        return;
+      }
+
+      const userId = String(socket.user._id);
       onlineAgents.set(String(userId), socket.id);
       socket.userId = String(userId);
       await User.findByIdAndUpdate(userId, { status: 'online', lastSeen: new Date() }).catch(() => null);
       io.emit('agents:online', Array.from(onlineAgents.keys()));
       io.emit('agent:statusUpdate', { userId, status: 'online' });
-    });
+    };
+
+    registerAgent().catch(() => null);
+    socket.on('agent:join', registerAgent);
 
     socket.on('conversation:join', (conversationId) => {
       socket.join(`conv:${conversationId}`);
@@ -39,7 +47,12 @@ module.exports = function setupSocket(io) {
       socket.to(`conv:${conversationId}`).emit('agent:typing', { conversationId, typing: false });
     });
 
-    socket.on('agent:status', async ({ userId, status }) => {
+    socket.on('agent:status', async ({ status }) => {
+      const userId = socket.userId || String(socket.user?._id || '');
+      if (!userId) {
+        return;
+      }
+
       await User.findByIdAndUpdate(userId, { status, lastSeen: new Date() }).catch(() => null);
       io.emit('agent:statusUpdate', { userId, status });
     });

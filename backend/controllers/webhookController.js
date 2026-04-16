@@ -107,7 +107,7 @@ async function processIncomingMessage(io, phoneNumberRecord, value, message) {
     const populatedConversation = await Conversation.findById(conversation._id)
       .populate('customer')
       .populate('assignedAgent', 'name email status avatar')
-      .populate('phoneNumber');
+      .populate('phoneNumber', '-accessToken -verifyToken');
     io.emitNewConversation(populatedConversation);
   }
 

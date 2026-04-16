@@ -1,6 +1,8 @@
 const PhoneNumber = require('../models/PhoneNumber');
 const whatsappService = require('../services/whatsappService');
 
+const SAFE_PHONE_NUMBER_FIELDS = '-accessToken -verifyToken';
+
 const normalizeMetaStatus = (value) => {
   const status = String(value || '').toLowerCase();
   if (status.includes('connected') || status.includes('verified')) return 'connected';
@@ -10,6 +12,17 @@ const normalizeMetaStatus = (value) => {
 };
 
 const canAccess = (req, phoneNumber) => req.user.role === 'admin' || String(phoneNumber.connectedBy) === String(req.user._id);
+
+const sanitizePhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) {
+    return phoneNumber;
+  }
+
+  const data = typeof phoneNumber.toObject === 'function' ? phoneNumber.toObject() : { ...phoneNumber };
+  delete data.accessToken;
+  delete data.verifyToken;
+  return data;
+};
 
 exports.connectPhoneNumber = async (req, res) => {
   try {
@@ -38,7 +51,7 @@ exports.connectPhoneNumber = async (req, res) => {
     }
 
     await record.save();
-    return res.status(201).json({ success: true, phoneNumber: record });
+    return res.status(201).json({ success: true, phoneNumber: sanitizePhoneNumber(record) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Failed to connect phone number' });
   }
@@ -47,7 +60,10 @@ exports.connectPhoneNumber = async (req, res) => {
 exports.getPhoneNumbers = async (req, res) => {
   try {
     const filter = req.user.role === 'admin' ? {} : { connectedBy: req.user._id };
-    const phoneNumbers = await PhoneNumber.find(filter).populate('connectedBy', 'name email role').sort({ createdAt: -1 });
+    const phoneNumbers = await PhoneNumber.find(filter)
+      .select(SAFE_PHONE_NUMBER_FIELDS)
+      .populate('connectedBy', 'name email role')
+      .sort({ createdAt: -1 });
     return res.json({ success: true, phoneNumbers });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to fetch phone numbers' });
@@ -56,7 +72,9 @@ exports.getPhoneNumbers = async (req, res) => {
 
 exports.getPhoneNumber = async (req, res) => {
   try {
-    const phoneNumber = await PhoneNumber.findById(req.params.id).populate('connectedBy', 'name email role');
+    const phoneNumber = await PhoneNumber.findById(req.params.id)
+      .select(SAFE_PHONE_NUMBER_FIELDS)
+      .populate('connectedBy', 'name email role');
     if (!phoneNumber) {
       return res.status(404).json({ success: false, message: 'Phone number not found' });
     }
@@ -85,7 +103,7 @@ exports.getCertificate = async (req, res) => {
     phoneNumber.status = normalizeMetaStatus(details.status || details.code_verification_status);
     await phoneNumber.save();
 
-    return res.json({ success: true, certificate: phoneNumber.certificate, phoneNumber });
+    return res.json({ success: true, certificate: phoneNumber.certificate, phoneNumber: sanitizePhoneNumber(phoneNumber) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.response?.data?.error?.message || error.message || 'Failed to fetch certificate' });
   }
@@ -113,7 +131,7 @@ exports.registerPhoneNumber = async (req, res) => {
     phoneNumber.status = 'connected';
     await phoneNumber.save();
 
-    return res.json({ success: true, result, phoneNumber });
+    return res.json({ success: true, result, phoneNumber: sanitizePhoneNumber(phoneNumber) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.response?.data?.error?.message || error.message || 'Failed to register phone number' });
   }
@@ -150,7 +168,7 @@ exports.verifyCode = async (req, res) => {
     const result = await whatsappService.verifyCode(phoneNumber.phoneNumberId, phoneNumber.accessToken, req.body.code);
     phoneNumber.status = 'connected';
     await phoneNumber.save();
-    return res.json({ success: true, result, phoneNumber });
+    return res.json({ success: true, result, phoneNumber: sanitizePhoneNumber(phoneNumber) });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.response?.data?.error?.message || error.message || 'Failed to verify code' });
   }

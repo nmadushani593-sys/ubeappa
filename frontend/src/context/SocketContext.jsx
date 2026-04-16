@@ -15,9 +15,11 @@ export const SocketProvider = ({ children }) => {
       return undefined;
     }
 
-    const socket = io('/', { withCredentials: true });
+    const socket = io('/', {
+      withCredentials: true,
+      auth: { token: localStorage.getItem('token') }
+    });
     socketRef.current = socket;
-    socket.emit('agent:join', user._id || user.id);
 
     return () => {
       socket.disconnect();

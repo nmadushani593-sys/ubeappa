@@ -2,13 +2,18 @@ const Template = require('../models/Template');
 const PhoneNumber = require('../models/PhoneNumber');
 const whatsappService = require('../services/whatsappService');
 
+const SAFE_PHONE_NUMBER_FIELDS = '-accessToken -verifyToken';
+
 exports.getTemplates = async (req, res) => {
   try {
     const query = {};
     if (req.query.phoneNumber) {
       query.phoneNumber = req.query.phoneNumber;
     }
-    const templates = await Template.find(query).populate('phoneNumber').populate('createdBy', 'name email').sort({ createdAt: -1 });
+    const templates = await Template.find(query)
+      .populate('phoneNumber', SAFE_PHONE_NUMBER_FIELDS)
+      .populate('createdBy', 'name email')
+      .sort({ createdAt: -1 });
     return res.json({ success: true, templates });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to fetch templates' });
@@ -53,9 +58,20 @@ exports.sendTemplate = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Template not found' });
     }
 
-    const phoneNumber = await PhoneNumber.findById(template.phoneNumber || req.body.phoneNumber);
+    const phoneNumberId = template.phoneNumber || req.body.phoneNumber;
+    if (!phoneNumberId) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' });
+    }
+
+    const phoneNumber = await PhoneNumber.findById(phoneNumberId);
     if (!phoneNumber) {
-      return res.status(400).json({ success: false, message: 'Phone number is required to send template' });
+      return res.status(400).json({ success: false, message: 'Phone number not found' });
+    }
+    if (
+      req.user.role !== 'admin' &&
+      String(phoneNumber.connectedBy) !== String(req.user._id)
+    ) {
+      return res.status(403).json({ success: false, message: 'Not authorized to use this phone number' });
     }
 
     const result = await whatsappService.sendTemplateMessage(
